@@ -1,0 +1,3 @@
+[workspace]
+members = ["MPortal", "MPortal-daemon"]
+resolver = "3"
