@@ -1,5 +1,8 @@
+use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::{process::Command, thread, time::{Duration}};
+
+use crate::config;
 
 pub fn is_media_file(path: &str) -> (bool, Option<String>) {
     let media_exts = [
@@ -69,6 +72,14 @@ pub fn handle_media_file(path: &Path, config: &config::Config) {
 }
 
 pub fn media_normal_convert(input: &Path, args: Vec<&str>, output: &str) {
+    let input_parent = input.parent().unwrap_or_else(|| Path::new("."));
+    
+    // create a temp file in the system temp directory
+    let file_name = Path::new(output).file_name().unwrap_or_default();
+    let temp_output = std::env::temp_dir().join(file_name);
+
+    println!("converting in temp folder: {:?}", temp_output);
+
     let conversion = Command::new("ffmpeg")
             .arg("-i")
             .arg(input)
@@ -80,12 +91,42 @@ pub fn media_normal_convert(input: &Path, args: Vec<&str>, output: &str) {
     match conversion {
         Ok(status) => {
              if status.success() {
-                println!("conversion done: {}", output);
+                // where to move the finished file???
+                let final_output_path = Path::new(output);
+                let destination = if let Some(parent) = final_output_path.parent() {
+                    if parent.exists() && parent.is_dir() {
+                        final_output_path.to_path_buf()
+                    } else {
+                        // if the idiot didn't made the output path, use input directory
+                        input_parent.join(file_name)
+                    }
+                } else {
+                    input_parent.join(file_name)
+                };
+
+                println!("moving finished file to: {:?}", destination);
+
+                if let Err(e) = fs::rename(&temp_output, &destination) {
+                    eprintln!("failed to move file from temp to final destination: {}", e);
+                    // try copying if rename fails
+                    if let Err(e2) = fs::copy(&temp_output, &destination) {
+                        eprintln!("failed to copy file from temp to final destination: {}", e2);
+                    } else {
+                        let _ = fs::remove_file(&temp_output);
+                        println!("conversion done: {:?}", destination);
+                    }
+                } else {
+                    println!("conversion done: {:?}", destination);
+                }
             } else {
                 eprintln!("ffmpeg failed for {}", input.display());
+                let _ = fs::remove_file(&temp_output);
             }
         },
-        Err(e) => eprintln!("Failed to execute ffmpeg: {}", e),
+        Err(e) => {
+            eprintln!("failed to execute ffmpeg: {}", e);
+            let _ = fs::remove_file(&temp_output);
+        },
     }
 }
 
