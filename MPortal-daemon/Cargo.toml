@@ -5,3 +5,6 @@ edition = "2024"
 
 [dependencies]
 notify = "8.2.0"
+serde = { version = "1", features = ["derive"] }
+toml = "1.0.6"
+dirs = "6.0.0"

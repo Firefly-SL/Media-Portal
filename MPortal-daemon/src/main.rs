@@ -4,11 +4,21 @@ use notify::{event::{ModifyKind, RenameMode}, EventKind, RecommendedWatcher, Rec
 use std::{collections::HashMap, path::{Path, PathBuf}, sync::mpsc::channel, time::{Duration, Instant}};
 
 mod utils;
+mod config;
 
 fn main() -> Result<()> {
+    println!("starting MPortal-daemon...");
+
+    let mut _config = match config::load_or_create_config() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("failed to load config: {}", e);
+            return Ok(());
+        }
+    };
+    
     let (tx, rx) = channel();
     let mut watcher: RecommendedWatcher = RecommendedWatcher::new(tx, notify::Config::default())?;
-    watcher.watch(Path::new("/home/user-zero/Desktop/expirement/input"), RecursiveMode::Recursive)?;
     
     let config_file_path = config::config_path().unwrap_or_default();
     let mut last_config_reload = Instant::now() - Duration::from_secs(5);
@@ -83,6 +93,7 @@ fn main() -> Result<()> {
                             utils::handle_media_file(path, &_config);
                         }
                     }
+                     _ => {}
                 }
             },
             Ok(Err(e)) => {
