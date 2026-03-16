@@ -7,12 +7,12 @@ mod utils;
 mod config;
 
 fn main() -> Result<()> {
-    println!("starting MPortal-daemon...");
+    log!("starting MPortal-daemon...");
 
     let mut _config = match config::load_or_create_config() {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("failed to load config: {}", e);
+            err!("failed to load config: {}", e);
             return Ok(());
         }
     };
@@ -29,9 +29,9 @@ fn main() -> Result<()> {
     // watch config file directory
     if let Some(parent) = config_file_path.parent() {
          if let Err(e) = watcher.watch(parent, RecursiveMode::NonRecursive) {
-             eprintln!("failed to watch config directory: {:?}", e);
+             err!("failed to watch config directory: {:?}", e);
          } else {
-             println!("watching config directory: {:?}", parent);
+             log!("watching config directory: {:?}", parent);
          }
     }
 
@@ -40,19 +40,19 @@ fn main() -> Result<()> {
         for path_config in &config.path {
             let input_path = Path::new(&path_config.input_folder);
             if input_path.exists() && input_path.is_dir() {
-                println!("watching input folder: {}", path_config.input_folder);
+                log!("watching input folder: {}", path_config.input_folder);
                 if let Err(e) = watcher.watch(input_path, RecursiveMode::Recursive) {
-                    eprintln!("failed to watch input folder {}: {:?}", path_config.input_folder, e);
+                    err!("failed to watch input folder {}: {:?}", path_config.input_folder, e);
                 }
             } else {
-                eprintln!("input folder does not exist: {}", path_config.input_folder);
+                err!("input folder does not exist: {}", path_config.input_folder);
             }
         }
     }
 
     // initial watch set up
     watch_config_folders(&mut watcher, &_config);
-    println!("service running");
+    log!("service running");
 
     loop {
         match rx.recv() {
@@ -65,11 +65,11 @@ fn main() -> Result<()> {
                         // check for config change with debounce
                         if event.paths.iter().any(|p| p == &config_file_path) {
                             if last_config_reload.elapsed() > Duration::from_millis(1000) {
-                                println!("config file changes, relaoding");
+                                log!("config file changes, reloading");
                                 if let Ok(new_config) = config::load_or_create_config() {
                                     _config = new_config;
                                     watch_config_folders(&mut watcher, &_config);
-                                    println!("config reloaded successfully.");
+                                    log!("config reloaded successfully.");
                                     last_config_reload = Instant::now();
                                 }
                             }
@@ -97,10 +97,10 @@ fn main() -> Result<()> {
                 }
             },
             Ok(Err(e)) => {
-                println!("notify error: {:?}", e);
+                err!("notify error: {:?}", e);
             }
             Err(e) => {
-                println!("channel received error: {:?}", e);
+                err!("channel received error: {:?}", e);
             }
         }
     }

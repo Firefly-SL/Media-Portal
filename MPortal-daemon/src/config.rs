@@ -21,7 +21,7 @@ impl Default for Config {
                 input_folder: "path to the input/folder".to_string(),
                 output_folder: "path to the output/folder".to_string(),
                 output_format: "mp4".to_string(),
-                arguments: "".to_string(),
+                arguments: ' '.to_string(),
             }]
         }
     }
