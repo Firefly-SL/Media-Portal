@@ -13,6 +13,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    Install,
     Update,
     Uninstall,
 }
@@ -20,7 +21,7 @@ enum Commands {
 fn main() {
     let cli = Cli::parse();
 
-    if let Some(Commands::Update) = cli.command {
+    if let Some(Commands::Update) | Some(Commands::Install)  = cli.command {
         println!("Updating...");
         
         let script_path = "../../installer/installer.ps1";
