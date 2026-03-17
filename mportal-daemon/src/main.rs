@@ -37,7 +37,7 @@ fn main() -> Result<()> {
 
     // watch input folders from config
     fn watch_config_folders(watcher: &mut RecommendedWatcher, config: &config::Config) {
-        for path_config in &config.path {
+        for path_config in &config.portal {
             let input_path = Path::new(&path_config.input_folder);
             if input_path.exists() && input_path.is_dir() {
                 log!("watching input folder: {}", path_config.input_folder);

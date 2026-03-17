@@ -3,25 +3,29 @@ use std::{fs, io, path::PathBuf};
 
 #[derive(Serialize, Deserialize)]
 pub struct Config {
-    pub path: Vec<Path>,
+    pub portal: Vec<Portal>,
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct Path {
+pub struct Portal {
+    pub portal_name: String,
     pub input_folder: String,
     pub output_folder: String,
     pub output_format: String,
-    pub arguments: String,
+    pub input_options: String,
+    pub output_options: String,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
-            path: vec![Path {
-                input_folder: "path to the input/folder".to_string(),
-                output_folder: "path to the output/folder".to_string(),
+            portal: vec![Portal {
+                portal_name: "".to_string(),
+                input_folder: "/path/to/the/input/folder".to_string(),
+                output_folder: "/path/to/the/output/folder".to_string(),
                 output_format: "mp4".to_string(),
-                arguments: ' '.to_string(),
+                input_options: "".to_string(),
+                output_options: "".to_string(),
             }]
         }
     }

@@ -2,6 +2,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::{process::Command, thread, time::{Duration}};
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
 use crate::config;
 
 #[macro_export]
@@ -65,7 +68,7 @@ pub fn handle_media_file(path: &Path, config: &config::Config) {
     if !path.exists() { return; }
 
     // find matching config
-    if let Some(path_config) = config.path.iter().find(|p| {
+    if let Some(path_config) = config.portal    .iter().find(|p| {
         let input_path = Path::new(&p.input_folder);
         if let Ok(canon_input) = input_path.canonicalize() {
              if path.starts_with(&canon_input) { return true; }
@@ -79,8 +82,9 @@ pub fn handle_media_file(path: &Path, config: &config::Config) {
             if !path.exists() { return; }
  
             if let Some(output_file) = get_output(&path_config.output_folder, &path.to_string_lossy(), &path_config.output_format) {
-                let args = string_to_str_slice(&path_config.arguments);
-                media_normal_convert(path, args, &output_file);               
+                let input_options = string_to_str_slice(&path_config.input_options);
+                let output_options = string_to_str_slice(&path_config.output_options);
+                media_normal_convert(path, input_options, output_options, &output_file);               
             } else {
                 err!("failed to determine output file path for {:?}", path);
             }
@@ -88,7 +92,7 @@ pub fn handle_media_file(path: &Path, config: &config::Config) {
     }
 }
 
-pub fn media_normal_convert(input: &Path, args: Vec<&str>, output: &str) {
+pub fn media_normal_convert(input: &Path, input_options: Vec<&str>, output_options: Vec<&str>, output: &str) {
     let input_parent = input.parent().unwrap_or_else(|| Path::new("."));
     
     // create a temp file in the system temp directory
@@ -97,13 +101,20 @@ pub fn media_normal_convert(input: &Path, args: Vec<&str>, output: &str) {
 
     log!("converting in temp folder: {:?}", temp_output);
 
-    let conversion = Command::new("ffmpeg")
-            .arg("-i")
-            .arg(input)
-            .args(args)
-            .arg(&temp_output)
-            .args(&["-loglevel", "warning", "-y"])
-            .status();
+    let mut command = Command::new("ffmpeg");
+    #[cfg(windows)]
+    {
+        command.creation_flags(0x08000000);
+    }
+    
+    let conversion = command
+        .args(input_options)
+        .arg("-i")
+        .arg(input)
+        .args(output_options)
+        .arg(&temp_output)
+        .args(&["-loglevel", "warning", "-y"])
+        .status();
     
     match conversion {
         Ok(status) => {
