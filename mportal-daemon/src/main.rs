@@ -2,13 +2,38 @@
  
 use notify::{event::{ModifyKind, RenameMode}, EventKind, RecommendedWatcher, RecursiveMode, Result, Watcher};
 use std::{collections::HashMap, path::{Path, PathBuf}, sync::mpsc::channel, time::{Duration, Instant}};
+use std::sync::atomic::{AtomicBool, Ordering};
+use clap::{Parser, ArgAction};
 
 mod utils;
 mod config;
 
-fn main() -> Result<()> {
-    log!("starting MPortal-daemon...");
+#[derive(Parser)]
+#[command(name = "mportal-daemon", about = "MPortal daemon for watching folder and runnning FFmpeg", disable_version_flag=true, version)]
+struct CliFlags {
+    #[arg(short = 'v', long = "version", help = "Print version", action = ArgAction::Version)]
+    version: (),
+    
+    #[arg(short = 'd', long = "debug",  help = "Live logs for debugging", action = ArgAction::SetTrue)]
+    debug: bool,
+}
 
+pub static DEBUG_ENABLED: AtomicBool = AtomicBool::new(false);
+
+fn main() -> Result<()> {
+    let cli_flags = CliFlags::parse();
+    
+    DEBUG_ENABLED.store(cli_flags.debug, Ordering::Relaxed);
+    
+    let config_file_path = config::config_path().unwrap_or_default();
+    let log_dir = config_file_path.parent().unwrap_or_else(|| Path::new("."));
+        
+    if let Err(e) = utils::init_logger(log_dir) {
+        eprintln!("failed to start logger: {}", e);
+    }
+
+    log!("starting MPortal-daemon...");
+    
     let mut _config = match config::load_or_create_config() {
         Ok(c) => c,
         Err(e) => {
@@ -19,8 +44,6 @@ fn main() -> Result<()> {
     
     let (tx, rx) = channel();
     let mut watcher: RecommendedWatcher = RecommendedWatcher::new(tx, notify::Config::default())?;
-    
-    let config_file_path = config::config_path().unwrap_or_default();
     let mut last_config_reload = Instant::now() - Duration::from_secs(5);
     
     // track recently processed files
@@ -44,8 +67,8 @@ fn main() -> Result<()> {
                 if let Err(e) = watcher.watch(input_path, RecursiveMode::Recursive) {
                     err!("failed to watch input folder {}: {:?}", path_config.input_folder, e);
                 }
-            } else {
-                err!("input folder does not exist: {}", path_config.input_folder);
+            } else if path_config.input_folder != "/path/to/the/input/folder" {
+                    err!("input folder does not exist: {}", path_config.input_folder);
             }
         }
     }
