@@ -41,14 +41,14 @@ pub fn load_or_create_config() -> Result<Config, io::Error> {
         }
 
         let toml = toml::to_string(&Config::default())
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "toml"))?;
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
 
         fs::write(&path, toml)?;
     }
 
     let contents = fs::read_to_string(&path)?;
     toml::from_str(&contents)
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "toml"))
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
 }
 
 pub fn config_path() -> Result<PathBuf, io::Error> {
