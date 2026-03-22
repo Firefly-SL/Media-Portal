@@ -1,0 +1,44 @@
+# BE CAREFULL...
+#
+# Everything started after '#' symbol won't take affect, you can remove them once you understand it.
+ 
+# Acording to this table:
+# if you put a mkv file in '/path/to/the/input/folder'
+# it will be converted into "mp4" and will be in '/path/to/the/output/folder'
+[[portal]]
+portal_name = "" # Table name, not necessary, it is for future use.
+input_folder = '/path/to/the/input/folder' # This will be the place where you put your video files in
+output_folder = '/path/to/the/output/folder' # You will get your media files converted in this folder
+output_format = "mp4" # Check bottom for all suported format, this format will be the file converted into 
+                      # (mkv -> mp4), (mov -> mp4), (avi -> mp4), (mp4 -> mp4, can solve problems with mp4 sometimes), etc..
+
+# you don't need to worry about these two options just leave them, but don't remove them.
+input_options = ""
+output_options = ""
+
+# Rules:
+# 1. Never put the 'input folder' same as 'output folder', that will create an loop of converting.
+# 2. Follow the first rule and everything mentioned above.
+# 3. don't put an image and expect it to be converted into mp4 video, this isn't Ai.
+
+# Table 2, just keep the structure and names same, and make as much as u want
+# [[portal]]
+# portal_name = ""
+# input_folder = '/path/to/the/input/folder'
+# output_folder = '/path/to/the/output/folder'
+# output_format = "mp4"
+#
+# input_options = ""
+# output_options = ""
+
+# Formats:
+# // video
+# mp4, mov, mkv, avi, flv, wmv, webm,
+# mpg, mpeg, m4v, ts, ogv, rm, 3gp, 3g2, dv, vob, mts, m2ts,
+# f4v, f4p, f4a, f4b, gif, mj2, nut,
+#
+# // audio
+# mp3, wav, flac, aac, ogg, m4a, wma, ac3, alac, opus, amr, au,
+#
+# // image
+# jpg, jpeg, png, bmp, tiff, tif, webp, exr
