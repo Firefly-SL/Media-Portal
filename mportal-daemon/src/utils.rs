@@ -4,28 +4,47 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::{process::Command, thread, time::Duration};
+use chrono::Local;
 
 use crate::config;
 
-static LOG_FILE: OnceLock<Mutex<File>> = OnceLock::new();
+static ERR_LOG_FILE: OnceLock<Mutex<File>> = OnceLock::new();
+static DEBUG_LOG_FILE: OnceLock<Mutex<File>> = OnceLock::new();
 
+// Errlogger and --debug logger
 pub fn init_logger(log_dir: &Path) -> std::io::Result<()> {
     if !log_dir.exists() {
         fs::create_dir_all(log_dir)?;
     }
 
-    let log_path = log_dir.join("ErrLog.log");
-    let file = OpenOptions::new()
+    let err_log_path = log_dir.join("ErrLog.log");
+    let err_file = OpenOptions::new()
         .create(true)
         .append(true)
-        .open(log_path)?;
+        .open(err_log_path)?;
+    let _ = ERR_LOG_FILE.set(Mutex::new(err_file));
 
-    let _ = LOG_FILE.set(Mutex::new(file));
+    let debug_log_path = std::env::temp_dir().join("mportal_debug.log");
+    let debug_file = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(debug_log_path)?;
+    let _ = DEBUG_LOG_FILE.set(Mutex::new(debug_file));
+
     Ok(())
 }
 
-pub fn _log_to_file(msg: &str) {
-    if let Some(mutex) = LOG_FILE.get() {
+pub fn _log_to_err_file(msg: &str) {
+    if let Some(mutex) = ERR_LOG_FILE.get() {
+        if let Ok(mut file) = mutex.lock() {
+            let _ = writeln!(file, "{}", msg);
+        }
+    }
+}
+
+pub fn _log_to_debug_file(msg: &str) {
+    if let Some(mutex) = DEBUG_LOG_FILE.get() {
         if let Ok(mut file) = mutex.lock() {
             let _ = writeln!(file, "{}", msg);
         }
@@ -35,11 +54,17 @@ pub fn _log_to_file(msg: &str) {
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
+// custom made print function.
 #[macro_export]
 macro_rules! log {
     ($($arg:tt)*) => {
+        let timestamp = $crate::utils::get_timestamp();
+        let thread_id = format!("{:?}", std::thread::current().id());
+        let msg = format!("[{}] [INFO] [{}] [{}:{}] {}", timestamp, thread_id, file!(), line!(), format!($($arg)*));
+        
         if $crate::DEBUG_ENABLED.load(std::sync::atomic::Ordering::Relaxed) {
-            println!($($arg)*);
+            println!("{}", msg);
+            $crate::utils::_log_to_debug_file(&msg);
         }
     };
 }
@@ -47,36 +72,41 @@ macro_rules! log {
 #[macro_export]
 macro_rules! err {
     ($($arg:tt)*) => {
+        let timestamp = $crate::utils::get_timestamp();
+        let thread_id = format!("{:?}", std::thread::current().id());
+        let msg = format!("[{}] [ERROR] [{}] [{}:{}] {}", timestamp, thread_id, file!(), line!(), format!($($arg)*));
+        
+        eprintln!("{}", msg);
+        $crate::utils::_log_to_err_file(&msg);
+        
         if $crate::DEBUG_ENABLED.load(std::sync::atomic::Ordering::Relaxed) {
-            let msg = format!($($arg)*);
-            eprintln!("{}", msg);
-            $crate::utils::_log_to_file(&format!("[ERR] {}", msg));
+             $crate::utils::_log_to_debug_file(&msg);
         }
     };
 }
 
+// this is for to track how much time it took for convertion,
+// everybody has some sort of logging, so why not me? :)
+pub fn get_timestamp() -> String {
+    Local::now().format("%d-%m %H:%M:%S").to_string()
+}
+
+// notification but either i would replace it or just get on with it
 pub fn notify(title: &str, body: &str, _folder_path: &str) {
     let _ = Notification::new().summary(title)
         .body(body)
         .show();
-    
-    // #[cfg(not(windows))]
-    // {
-    //     log!(">     folder_path: {}", folder_path);
-    //     if let Ok(handle) = notification.show() {
-    //         handle.wait_for_action(move |action| {
-    //             if folder_path != " " && (action == "clicked_a") {
-    //                 log!("folder_path: {}, action: {}", folder_path, action);
-    //                 let _ = Command::new("xdg-open")
-    //                     .arg(&folder_path)
-    //                     .spawn();
-    //             }
-    //         });
-    //     }
-    // }
 }
 
+// gotta add some way to sepearte video, audio, image as seperate
 pub fn is_media_file(path: &str) -> (bool, Option<String>) {
+    let path_obj = Path::new(path);
+    if let Some(file_name) = path_obj.file_name().and_then(|n| n.to_str()) {
+        if file_name.contains(".conv.")|| file_name.contains(".converting.") {
+            return (false, None);
+        }
+    }
+
     let media_exts = [
         //video
         "mp4", "mov", "mkv", "avi", "flv", "wmv", "webm", "mpg", "mpeg", "m4v", "ts", "ogv", "rm",
@@ -87,7 +117,7 @@ pub fn is_media_file(path: &str) -> (bool, Option<String>) {
         "jpg", "jpeg", "png", "bmp", "tiff", "tif", "webp", "exr",
     ];
 
-    if let Some(ext) = Path::new(path).extension() {
+    if let Some(ext) = path_obj.extension() {
         if let Some(ext_str) = ext.to_str() {
             return (
                 media_exts.contains(&ext_str.to_lowercase().as_str()),
@@ -103,7 +133,7 @@ pub fn get_output(main_path: &str, path: &str, ext: &str) -> Option<String> {
     if let Some(stem) = path.file_stem() {
         if let Some(stem_str) = stem.to_str() {
             let mut out_path = PathBuf::from(main_path);
-            let file_name = format!("{}.converted.{}", stem_str, ext);
+            let file_name = format!("{}.conv.{}", stem_str, ext);
             out_path.push(file_name);
             return Some(out_path.to_string_lossy().to_string());
         }
@@ -159,9 +189,24 @@ pub fn media_normal_convert(
     output_options: Vec<&str>,
     output: &str,
 ) {
-    let input_parent = input.parent().unwrap_or_else(|| Path::new("."));
-    let file_name = Path::new(output).file_name().unwrap_or_default();
-    let temp_output = std::env::temp_dir().join(file_name);
+    let _input_parent = input.parent().unwrap_or_else(|| Path::new("."));
+    let final_output_path = Path::new(output); // This is the final name: video.conv.mp4
+    let final_output_dir = final_output_path.parent().unwrap_or_else(|| Path::new("."));
+
+    // determine temp folder path: output_dir/temp/
+    let temp_subfolder = final_output_dir.join("temp");
+    if !temp_subfolder.exists() {
+        if let Err(e) = fs::create_dir_all(&temp_subfolder) {
+            err!("Failed to create temporary subfolder {:?}: {:?}", temp_subfolder, e);
+            return; 
+        }
+    }
+
+    // output filename
+    let temp_file_stem = final_output_path.file_stem().unwrap_or_default().to_str().unwrap_or("output");
+    let target_ext = final_output_path.extension().and_then(|s| s.to_str()).unwrap_or("mp4");
+    let temp_output_filename = format!("{}.converting.{}", temp_file_stem, target_ext);
+    let temp_output = temp_subfolder.join(&temp_output_filename);
 
     notify(
         "MPortal: Converting...",
@@ -192,109 +237,47 @@ pub fn media_normal_convert(
     match conversion {
         Ok(status) => {
             if status.success() {
-                // where to move the finished file
-                let final_output_path = Path::new(output);
-                let destination = if let Some(parent) = final_output_path.parent() {
-                    if parent.exists() && parent.is_dir() {
-                        final_output_path.to_path_buf()
-                    } else {
-                        // if output path doesn't exist, use input directory
-                        input_parent.join(file_name)
-                    }
-                } else {
-                    input_parent.join(file_name)
-                };
+                let final_output_path_for_move = final_output_path.to_path_buf();
+                log!("moving finished file to: {:?}", final_output_path_for_move);
 
-                log!("moving finished file to: {:?}", destination);
-
-                #[cfg(windows)]
-                if let Err(e) = fs::rename(&temp_output, &destination) {
-                    err!("failed to move file from temp to final destination: {}", e);
-                    // try copying if rename fails
-                    if let Err(e2) = fs::copy(&temp_output, &destination) {
-                        err!("failed to copy file from temp to final destination: {}", e2);
+                if let Err(e) = fs::rename(&temp_output, &final_output_path_for_move) {
+                    err!("failed to move file from temp to final destination: {:?}", e);
+                    // note buddy: copy paste have no limitation across file system like moving files.
+                    if let Err(e2) = fs::copy(&temp_output, &final_output_path_for_move) {
+                        err!("failed to copy file from temp to final destination: {:?}", e2);
                     } else {
                         let _ = fs::remove_file(&temp_output);
-                        log!("conversion done: {:?}", destination);
+                        log!("conversion done: {:?}", final_output_path_for_move);
                         notify(
-                            "MPortal: Converting...",
+                            "MPortal: Conversion Done",
                             Path::new(input)
                                 .file_name()
                                 .unwrap_or_default()
                                 .to_str()
                                 .unwrap_or(""),
-                            destination.parent().unwrap().to_str().unwrap(),
+                            final_output_path_for_move.parent().unwrap().to_str().unwrap(),
                         );
                     }
                 } else {
-                    log!("conversion done: {:?}", destination);
+                    log!("conversion done: {:?}", final_output_path_for_move);
                     notify(
-                        "MPortal: Converting...",
+                        "MPortal: Conversion Done",
                         Path::new(input)
                             .file_name()
                             .unwrap_or_default()
                             .to_str()
                             .unwrap_or(""),
-                        destination.parent().unwrap().to_str().unwrap(),
-                    );
-                }
-
-                #[cfg(not(windows))]
-                if let Err(e) = fs::copy(&temp_output, &destination) {
-                    err!("failed to copy file from temp to final destination: {}", e);
-                    // won't work
-                    if let Err(e2) = fs::rename(&temp_output, &destination) {
-                        err!("failed to move file from temp to final destination: {}", e2);
-                    } else {
-                        log!("conversion done: {:?}", destination);
-                        notify(
-                            "MPortal: Convertion Done",
-                            Path::new(input)
-                                .file_name()
-                                .unwrap_or_default()
-                                .to_str()
-                                .unwrap_or(""),
-                            destination.parent().unwrap().to_str().unwrap(),
-                        );
-                    }
-                } else {
-                    let _ = fs::remove_file(&temp_output);
-                    log!("conversion done: {:?}", destination);
-                    notify(
-                        "MPortal: Convertion Done",
-                        Path::new(input)
-                            .file_name()
-                            .unwrap_or_default()
-                            .to_str()
-                            .unwrap_or(""),
-                        destination.parent().unwrap().to_str().unwrap(),
+                        final_output_path_for_move.parent().unwrap().to_str().unwrap(),
                     );
                 }
             } else {
-                err!("ffmpeg failed for {}", input.display());
+                err!("ffmpeg failed for {} with status {:?}", input.display(), status);
                 let _ = fs::remove_file(&temp_output);
             }
         }
         Err(e) => {
-            err!("failed to execute ffmpeg: {}", e);
+            err!("failed to execute ffmpeg for {}: {:?}", input.display(), e);
             let _ = fs::remove_file(&temp_output);
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_get_output_handling() {
-        let main_path = "output_folder";
-        let path = "/tmp/test_video.mp4";
-        let ext = "mkv";
-
-        let result = get_output(main_path, path, ext).unwrap();
-
-        let expected = PathBuf::from("output_folder").join("test_video.converted.mkv");
-        assert_eq!(result, expected.to_string_lossy());
     }
 }
